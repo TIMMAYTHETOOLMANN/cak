@@ -668,24 +668,24 @@ abstract class ElectrumWalletAddressesBase extends WalletAddresses with Store {
     }
   }
 
-  void addLitecoinAddressTypes() {
+  void addLitecoinAddressTypes(String activeAddress) {
     final lastP2wpkh = _addresses
         .where((addressRecord) =>
             _isUnusedReceiveAddressByType(addressRecord, SegwitAddresType.p2wpkh))
         .toList()
         .last;
-    if (lastP2wpkh.address != address) {
+    if (lastP2wpkh.address != activeAddress) {
       addressesMap[lastP2wpkh.address] = 'P2WPKH';
     } else {
-      addressesMap[address] = 'Active - P2WPKH';
+      addressesMap[activeAddress] = 'Active - P2WPKH';
     }
 
     final lastMweb = _addresses.firstWhere(
         (addressRecord) => _isUnusedReceiveAddressByType(addressRecord, SegwitAddresType.mweb));
-    if (lastMweb.address != address) {
+    if (lastMweb.address != activeAddress) {
       addressesMap[lastMweb.address] = 'MWEB';
     } else {
-      addressesMap[address] = 'Active - MWEB';
+      addressesMap[activeAddress] = 'Active - MWEB';
     }
   }
 
@@ -703,8 +703,10 @@ abstract class ElectrumWalletAddressesBase extends WalletAddresses with Store {
   Future<void> updateAddressesInBox() async {
     try {
       addressesMap.clear();
+      // Not every sender can pay Lightning, Silent Payments or MWEB; offer plain SegWit instead.
       final activeAddress = addressPageType == LightningAddressType.p2l ||
-              addressPageType == SilentPaymentsAddresType.p2sp
+              addressPageType == SilentPaymentsAddresType.p2sp ||
+              addressPageType == SegwitAddresType.mweb
           ? addressForBuy
           : address;
       addressesMap[activeAddress] = 'Active';
@@ -719,7 +721,7 @@ abstract class ElectrumWalletAddressesBase extends WalletAddresses with Store {
           addBitcoinAddressTypes(activeAddress);
           break;
         case WalletType.litecoin:
-          addLitecoinAddressTypes();
+          addLitecoinAddressTypes(activeAddress);
           break;
         case WalletType.bitcoinCash:
           addP2PKHAddressTypes();
