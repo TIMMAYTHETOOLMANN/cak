@@ -71,7 +71,7 @@ Future<void> _initDb({String? pathOverride}) async {
   await db?.close();
   db = await openDatabase(
     dbFile.path,
-    version: 15,
+    version: 16,
     onUpgrade: (db, oldVersion, newVersion) async {
       printV("migrating: $oldVersion, $newVersion");
       if (oldVersion <= 1) {
@@ -206,6 +206,15 @@ CREATE TABLE IF NOT EXISTS BalanceCardStyleSettings (
           definition: "BOOLEAN DEFAULT FALSE",
         );
       }
+      if (oldVersion <= 15) {
+        await _createWalletInfoScanCoverageTable(db);
+        await _addColumnIfNotExists(
+          db,
+          table: "WalletInfo",
+          column: "backfillTargetHeight",
+          definition: "INTEGER DEFAULT NULL",
+        );
+      }
     },
     onCreate: (Database db, int version) async {
       await db.execute('''
@@ -235,6 +244,7 @@ CREATE TABLE WalletInfo (
   receiveInfoboxDismissed BOOLEAN DEFAULT FALSE,
   showCombinedBalance BOOLEAN DEFAULT TRUE,
   favoriteTokenAddress TEXT DEFAULT NULL,
+  backfillTargetHeight INTEGER DEFAULT NULL,
   accountDiscoveryLimit INTEGER DEFAULT NULL,
   isMultiAccountsEnabled INTEGER DEFAULT NULL,
   showSeedBackupReminder BOOLEAN DEFAULT FALSE
@@ -313,6 +323,7 @@ CREATE TABLE BalanceCardStyleSettings (
       await _createTronTokenTable(db);
       await _createImportedNFTTable(db);
       await _createWalletInfoAccountTable(db);
+      await _createWalletInfoScanCoverageTable(db);
     },
   );
 }
@@ -602,4 +613,29 @@ isBuiltin BOOLEAN DEFAULT FALSE,
 isDefault BOOLEAN DEFAULT FALSE
 );
         """);
+}
+
+/// Mode-tagged scanned-height coverage set for the Silent Payments scan
+/// worker pool: a set of disjoint `[startHeight, endHeight]` ranges per
+/// wallet, each tagged `historical` or not. A range scanned
+/// non-historically is NOT equivalent to the same range scanned
+/// historically (spent outputs are only visible historically) — the two
+/// are deliberately never merged together, only within the same mode. See
+/// `cw_core/lib/wallet_info.dart`'s `WalletInfoScanCoverage` for the
+/// read/write API and the pure merge logic.
+Future<void> _createWalletInfoScanCoverageTable(Database db) async {
+  await db.execute("""
+CREATE TABLE IF NOT EXISTS WalletInfoScanCoverage (
+	walletInfoScanCoverageId INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+	walletInfoId INTEGER NOT NULL,
+	startHeight INTEGER NOT NULL,
+	endHeight INTEGER NOT NULL,
+	historical INTEGER NOT NULL,
+	CONSTRAINT WalletInfoScanCoverage_WalletInfo_FK FOREIGN KEY (walletInfoId) REFERENCES WalletInfo(walletInfoId)
+);
+""");
+  await db.execute("""
+CREATE INDEX IF NOT EXISTS idx_walletinfoscancoverage_walletinfoid
+ON WalletInfoScanCoverage (walletInfoId);
+""");
 }
